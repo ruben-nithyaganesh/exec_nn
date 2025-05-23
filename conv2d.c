@@ -142,7 +142,7 @@ Tensor read_tensor(unsigned char* filename) {
 }
 
 Tensor conv2d_forward(Conv2D *conv2d, Tensor input) {
-  
+    // currently this will only work for convs with stride 1, dilation 1, padding 0 and kernels of odd size
     int batch_stride = input.C * input.W * input.H;
     int channel_stride = input.W * input.H;
     int row_stride = input.W;

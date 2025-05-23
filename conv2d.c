@@ -166,7 +166,7 @@ Tensor conv2d_forward(Conv2D *conv2d, Tensor input) {
         for(int out_channel = 0; out_channel < conv2d->out_channels; out_channel++) {
             nn_float *kernel = conv2d->weights + (out_channel * conv_kernel_stride);
             for(int image_y = conv_y_offset; image_y < input.H - conv_y_offset; image_y++) {
-            for(int image_x = conv_x_offset; image_x < input.W - conv_x_offset; image_x++) {
+                for(int image_x = conv_x_offset; image_x < input.W - conv_x_offset; image_x++) {
                     sum = 0;
                     if(conv2d->bias != 0) {
                         sum = conv2d->bias[out_channel];
@@ -180,11 +180,6 @@ Tensor conv2d_forward(Conv2D *conv2d, Tensor input) {
                                     ((image_y - conv_y_offset + y) * row_stride) +
                                     image_x - conv_x_offset + x
                                 ];
-                                //int batch_dim = batch;
-                                //int channel_dim = in_channel;
-                                //int row_dim = image_y - conv_y_offset + y;
-                                //int col_dim = image_x - conv_x_offset + x;
-                                //nn_float input_value = tensor_at(input, batch_dim, channel_dim, row_dim, col_dim);
                                 nn_float kernel_value = kernel[
                                     (conv2d->kernel.height * conv2d->kernel.width * in_channel) +
                                     (conv2d->kernel.width * y) + x

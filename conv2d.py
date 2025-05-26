@@ -67,7 +67,10 @@ if __name__ == '__main__':
         print(x[0][0][3][4])
         print(x[0][0][4][3])
         write_tensor('conv_input.txt', x)
+        start = time.monotonic_ns()
         out = conv2d(x)
+        elapsed = (time.monotonic_ns() - start) / 1e+9
+        print(f'forward took {elapsed} seconds.')
         #print(out)
         #print(out.shape)
         write_tensor('conv_output.txt', out)

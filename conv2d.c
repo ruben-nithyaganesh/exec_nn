@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include "execute_conv2d.h"
 #include "shared.h"
 
 #define VERBOSE
@@ -199,16 +201,84 @@ Tensor conv2d_forward(Conv2D *conv2d, Tensor input) {
     return output;
 }
 
+Tensor create_executable_conv2d(unsigned char* filename, Conv2D *conv2d, Tensor input, Tensor output) {
+    FILE *file;
+    file = fopen(filename, "w");
+
+    // currently this will only work for convs with stride 1, dilation 1, padding 0 and kernels of odd size
+    int batch_stride = input.C * input.W * input.H;
+    int channel_stride = input.W * input.H;
+    int row_stride = input.W;
+    
+    int conv_kernel_stride = conv2d->kernel.width * conv2d->kernel.height * conv2d->in_channels;
+    int conv_y_offset = (conv2d->kernel.height / 2);
+    int conv_x_offset = (conv2d->kernel.width / 2);
+    
+    fprintf(file, "#include \"execute_conv2d.h\"\n");
+    fprintf(file, "void execute_conv2d(nn_float *input, nn_float *output) {\n");
+    fprintf(file, "// The following is auto generated code\n");
+    fprintf(file, "\tnn_float *output_buffer = output;\n");
+    fprintf(file, "\tnn_float sum = 0.0;\n");
+    nn_float *output_buffer = output.data;
+    nn_float sum = 0;
+    for(int batch = 0; batch < input.N; batch++) {
+        for(int out_channel = 0; out_channel < conv2d->out_channels; out_channel++) {
+            for(int image_y = conv_y_offset; image_y < input.H - conv_y_offset; image_y++) {
+                for(int image_x = conv_x_offset; image_x < input.W - conv_x_offset; image_x++) {
+                    if(conv2d->bias != 0) {
+                        fprintf(file, "\tsum = %.30f;\n", conv2d->bias[out_channel]);
+                    } else {
+                        fprintf(file, "\tsum = 0;\n");
+                    }
+                    for(int in_channel = 0; in_channel < conv2d->in_channels; in_channel++) {
+                        for(int y = 0; y < conv2d->kernel.height; y++) {
+                            for(int x = 0; x < conv2d->kernel.width; x++) {
+
+                                int input_index = (batch * batch_stride) +
+                                    (in_channel * channel_stride) +
+                                    ((image_y - conv_y_offset + y) * row_stride) +
+                                    image_x - conv_x_offset + x;
+                                
+                                int kernel_index = (out_channel * conv_kernel_stride) +
+                                    (conv2d->kernel.height * conv2d->kernel.width * in_channel) +
+                                    (conv2d->kernel.width * y) + x;
+
+                                fprintf(file, "\tsum += input[%d] * %.30f;\n", input_index, conv2d->weights[kernel_index]);
+                            }
+                        }
+                    }
+                    fprintf(file, "\t*output_buffer = sum;\n");
+                    fprintf(file, "\toutput_buffer++;\n");
+                }
+            }
+        }
+    }
+    fprintf(file, "}\n");
+    return output;
+}
+
 int main() {
     Conv2D conv2d = load_conv2d("conv_params.txt");
     Tensor t = read_tensor("conv_input.txt");
+    int conv_y_offset = (conv2d.kernel.height / 2);
+    int conv_x_offset = (conv2d.kernel.width / 2);
+    Tensor out;
+    out.N = t.N;
+    out.C = conv2d.out_channels;
+    out.H = t.H - (conv_y_offset * 2);
+    out.W = t.H - (conv_x_offset * 2);
+    int output_size = out.N * out.C * out.H * out.W;
+    out.data = (nn_float *)malloc(output_size * sizeof(nn_float));
+    int output_batch_stride = out.C * out.W * out.H;
     printf("%.30f\n", tensor_at(t, 0, 0, 3, 4));
     printf("%.30f\n", tensor_at(t, 0, 0, 4, 3));
-    Tensor out = conv2d_forward(&conv2d, t);
+    //Tensor out = conv2d_forward(&conv2d, t);
+    execute_conv2d(t.data, out.data);
     printf("N: %d, C: %d, W: %d, H: %d\n", out.N, out.C, out.W, out.H);
     Tensor output = read_tensor("conv_output.txt");
     int size = output.N * output.C * output.W * output.H;
     for(int i = 0; i < size; i++) {
        printf("ours: %s%.30lf\ttorch: %s%.30lf\n", (out.data[i] < 0) ? "" : " ", out.data[i], (output.data[i] < 0) ? "" : " ", output.data[i]);
     }
+    create_executable_conv2d("execute_conv2d.c", &conv2d, t, out);
 }
